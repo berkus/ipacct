@@ -1,0 +1,79 @@
+<%
+require "cgi"
+require "dbi"
+require "net/netmask"
+
+$cgi = CGI.new
+print $cgi.header("type"=>"text/html")
+
+def populateSelect(value)
+   list = [
+      [ Netmask.new("212.220.206.98").to_i, "внешней сетью" ],
+      [ Netmask.new("192.168.0.1").to_i, "berkus" ],
+      [ Netmask.new("192.168.0.2").to_i, "redcat" ]
+   ]
+   list.each do |item|
+      print "<option value=\"#{item[0]}\" #{"selected" if item[0]==value}>#{item[1]}</option>"
+   end
+end
+
+def populateInterval(value)
+   list = [ 5, 10, 15, 20, 30, 60, 120, 360, 720, 1440 ]
+   list.each do |item|
+      print "<option value=\"#{item}\" #{"selected" if item==value}>#{item}</option>"
+   end
+end
+%>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+<body>
+<head>
+   <meta name="Content-Type" content="text/html; charset=utf-8"/>
+   <title>Traffic</title>
+</head>
+<body>
+<div style="border: 2px dotted gray; margin: 10px; padding: 10px; width: auto">
+<form method="post" style="margin-bottom: 4px">
+<nobr>Показать трафик между <select name="ip_in"><%populateSelect($cgi['ip_in'])%></select>&nbsp;и&nbsp;<select name="ip_out"><%populateSelect($cgi['ip_out'])%></select></nobr><br />
+<nobr>за период с <input type="text" name="startDate" value="<%=$cgi['startDate']%>" /> по <input type="text" name="endDate" value="<%=$cgi['endDate']%>" /></nobr><br />
+<nobr>с интервалом в <select name="interval"><%populateInterval($cgi['interval'])%></select>&nbsp;минут</nobr>
+<div style="background-color: gray" align="right"><input type="submit" name="go" value="Показать" /></div>
+</form>
+</div>
+<%
+if !$cgi['go'].empty?
+   begin
+      # connect to the MySQL server
+#      dbh = Mysql.real_connect("localhost", "trafficmeter", "measureme", "eth_traffic")
+      dbh = DBI.connect("dbi:Mysql:eth_traffic:localhost", "trafficmeter", "measureme")
+
+      source_ip = $cgi['ip_in'].to_i
+      target_ip = $cgi['ip_out'].to_i
+
+      sth = dbh.prepare("SELECT SUM(bytes) AS totalBytes
+                            FROM rawdata
+                            WHERE stamp >= '?'
+                              AND stamp <= '?'
+                              AND source_ip = ?
+                              AND target_ip = ?")
+
+      sth.execute($cgi['startDate'], $cgi['endDate'], source_ip, target_ip)
+
+      sth.fetch do |row|
+         print "Total bytes: #{row[0]}"
+      end
+
+      sth.finish
+
+      print "<small>#{query}<br />done</small>"
+   rescue MysqlError => e
+      print "MySQL connect error"
+      print "Error code: ", e.errno, "\n"
+      print "Error message: ", e.error, "\n"
+   ensure
+      # disconnect from server
+      dbh.disconnect if dbh
+   end
+end
+%>
+</body>
+</html>

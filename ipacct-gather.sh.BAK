@@ -1,0 +1,35 @@
+#!/bin/sh
+# Gather ipacct info
+# Run from crontab:
+# */5 * * * * /path/to/ipacct-gather.sh
+
+. /etc/ipacct.conf
+
+${IPTABLES} -vxnL ${ACCT} | gawk -v RRDFILE=${RRDFILE} '
+BEGIN { flag=0;gotIn=0;gotOut=0 }
+
+function updateRrd(a,b)
+{
+    print "Got rrdupdate "RRDFILE" request: i="a";o="b
+    system("rrdtool update "RRDFILE" -t InBytes:OutBytes N:"a":"b)
+}
+
+{
+    if(flag) {#print "PKT:"$1" BYTES:"$2" IF:"$5" OF:"$6" IIP:"$7" OIP:"$8
+	if ($5=="eth0" && $8=="212.220.206.98") {
+	    gotIn=$2
+	}
+	if ($6=="eth0" && $7=="212.220.206.98") {
+	    gotOut=$2
+	}
+	if (gotIn && gotOut)
+	{
+	    updateRrd(gotIn,gotOut)
+	    gotIn=0
+	    gotOut=0
+	}
+    }
+}
+
+/^[[:space:]]+pkts.+$/ { flag=1 }
+'
